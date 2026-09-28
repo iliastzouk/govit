@@ -88,7 +88,9 @@ def _card(v: dict, today: date) -> str:
 </article>"""
 
 
-def write_report(report: dict, out: Path, today: date) -> int:
+def select_open(report: dict, today: date) -> tuple[dict[str, list[dict]], list[dict], int]:
+    """Split the IT candidates into (still open, by category), (open but internal-only)
+    and a count of the ones whose deadline has passed."""
     open_items: dict[str, list[dict]] = {key: [] for key, *_ in SECTIONS}
     internal: list[dict] = []
     hidden = 0
@@ -105,6 +107,11 @@ def write_report(report: dict, out: Path, today: date) -> int:
             internal.append(v)
         else:
             open_items[v["category"]].append(v)
+    return open_items, internal, hidden
+
+
+def write_report(report: dict, out: Path, today: date) -> int:
+    open_items, internal, hidden = select_open(report, today)
 
     body = []
     for key, heading, hint in SECTIONS:

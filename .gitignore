@@ -2,3 +2,4 @@
 __pycache__/
 scanner/cache/
 .env
+scanner/notify.md

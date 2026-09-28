@@ -23,6 +23,17 @@ The report hides notices whose deadline has passed. Notices with no detectable d
 shown for 45 days after publication, marked "δες το ΦΕΚ". Results lists, exam results and
 merit lists are not counted as vacancies.
 
+## Automation
+
+`.github/workflows/scan.yml` runs the scan on GitHub, every Friday evening and again on
+Monday morning (issues are normally published on Friday, but mid-week issues happen).
+It commits the refreshed `report.html` / `results.json` and opens a GitHub issue listing
+whatever is new, which arrives as a notification on the phone.
+
+`notify.py` keeps `notified.json` so each vacancy is announced once. It also sends an email
+through Resend when the repository secrets `RESEND_API_KEY` and `EMAIL_TO` are set
+(optional `EMAIL_FROM`, default Resend's sandbox sender); without them it just prints a note.
+
 ## Posts closed to outsiders
 
 Posts marked "(Η θέση είναι Διατμηματικής Προαγωγής)" or "Προαγωγής", and posts whose text
