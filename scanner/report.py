@@ -137,6 +137,7 @@ def write_report(report: dict, out: Path, today: date) -> int:
     html = f"""<!doctype html>
 <html lang="el"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
 <title>Θέσεις Πληροφορικής Δημοσίου</title>
 <style>{CSS}</style></head>
 <body><main>
