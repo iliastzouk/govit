@@ -12,7 +12,7 @@ from pathlib import Path
 
 import requests
 
-from report import select_open
+from report import COLLAPSED, select_open
 
 HERE = Path(__file__).parent
 NOTIFIED = HERE / "notified.json"
@@ -73,9 +73,12 @@ def main() -> None:
     open_items, internal, _ = select_open(results, today)
 
     notified = load_notified()
-    fresh = [v for items in open_items.values() for v in items if key(v) not in notified]
-    fresh.sort(key=lambda v: (v["category"] != "it_role", v["deadline"] or "9999"))
-    still_open = sum(len(v) for v in open_items.values())
+    # Only the sections worth interrupting for: the ones the AI judged irrelevant are
+    # visible in the report but never notified.
+    relevant = {k: items for k, items in open_items.items() if k not in COLLAPSED}
+    fresh = [v for items in relevant.values() for v in items if key(v) not in notified]
+    fresh.sort(key=lambda v: ((v.get("ai") or {}).get("verdict") != "direct_it", v["deadline"] or "9999"))
+    still_open = sum(len(v) for v in relevant.values())
 
     if fresh:
         roles = sum(1 for v in fresh if v["category"] == "it_role")

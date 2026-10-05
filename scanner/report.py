@@ -8,13 +8,34 @@ from pathlib import Path
 # Notices without a detectable deadline are shown only if published this recently.
 UNKNOWN_DEADLINE_MAX_AGE = timedelta(days=45)
 
+# Sections follow the AI verdict; without an AI answer the keyword category decides.
 SECTIONS = [
-    ("it_role", "Θέσεις Πληροφορικής",
-     "Η Πληροφορική ή η Ψηφιακή Ασφάλεια εμφανίζεται στον τίτλο της θέσης."),
-    ("it_mentioned", "Πιθανώς σχετικές",
-     "Η Πληροφορική αναφέρεται μόνο στο κείμενο — π.χ. γίνεται δεκτό πτυχίο Πληροφορικής, "
-     "ή ζητούνται απλώς γνώσεις υπολογιστών. Χρειάζεται έλεγχος."),
+    ("direct_it", "Θέσεις Πληροφορικής",
+     "Η ίδια η θέση αφορά Πληροφορική."),
+    ("it_degree_accepted", "Δεκτό πτυχίο Πληροφορικής",
+     "Άλλη ειδικότητα, που όμως δέχεται και πτυχίο Πληροφορικής."),
+    ("other", "Λιγότερο σχετικές",
+     "Ζητούν απλώς γνώσεις υπολογιστών, ή το AI τις έκρινε άσχετες. Κρυμμένες για να μη "
+     "χάνεται ο χρόνος σου, αλλά διαθέσιμες για έλεγχο."),
 ]
+COLLAPSED = {"other"}
+FIT_ORDER = {"good": 0, "partial": 1, "poor": 2}
+FALLBACK_BUCKET = {"it_role": "direct_it", "it_mentioned": "it_degree_accepted"}
+
+
+def bucket(v: dict) -> str:
+    verdict = (v.get("ai") or {}).get("verdict")
+    if verdict in ("direct_it", "it_degree_accepted"):
+        return verdict
+    if verdict:  # it_skills_only / not_it
+        return "other"
+    return FALLBACK_BUCKET[v["category"]]
+
+
+def sort_key(v: dict):
+    """Best fit first, then the nearest deadline."""
+    fit = (v.get("ai") or {}).get("fit_for_profile")
+    return (FIT_ORDER.get(fit, 1), v["deadline"] is None, v["deadline"] or "", -v["issue_number"])
 
 CSS = """
 :root{--bg:#f6f7f9;--card:#fff;--text:#1b1f24;--muted:#5b6470;--line:#e2e5ea;--accent:#0b5cad;
@@ -90,6 +111,11 @@ def _ai_block(ai: dict) -> str:
 
 def _card(v: dict, today: date) -> str:
     deadline = date.fromisoformat(v["deadline"]) if v["deadline"] else None
+    # The gazette heading is often generic ("ΠΡΟΣΛΗΨΗ ΕΡΓΟΔΟΤΟΥΜΕΝΩΝ ΟΡΙΣΜΕΝΟΥ ΧΡΟΝΟΥ"),
+    # so prefer the post title the model read out of the text.
+    ai = v.get("ai") or {}
+    title = ai.get("job_title") or v["title"] or "(χωρίς τίτλο)"
+    org = ai.get("organization") or v["organization"]
     tags = []
     if v["title"].startswith("ΠΑΡΑΤΑΣΗ"):
         tags.append("Παράταση προθεσμίας")
@@ -105,8 +131,8 @@ def _card(v: dict, today: date) -> str:
 <article class="card">
   <div class="top">
     <div>
-      <p class="title">{escape(v["title"] or "(χωρίς τίτλο)")}</p>
-      <p class="org">{escape(v["organization"])}</p>
+      <p class="title">{escape(title)}</p>
+      <p class="org">{escape(org)}</p>
     </div>
     {_badge(deadline, today)}
   </div>
@@ -128,7 +154,7 @@ def select_open(report: dict, today: date) -> tuple[dict[str, list[dict]], list[
     internal: list[dict] = []
     hidden = 0
     for v in report["vacancies"]:
-        if v["category"] not in open_items:
+        if v["category"] == "not_it":
             continue
         if v["deadline"]:
             keep = date.fromisoformat(v["deadline"]) >= today
@@ -139,7 +165,7 @@ def select_open(report: dict, today: date) -> tuple[dict[str, list[dict]], list[
         elif v["public_servants_only"]:
             internal.append(v)
         else:
-            open_items[v["category"]].append(v)
+            open_items[bucket(v)].append(v)
     return open_items, internal, hidden
 
 
@@ -148,9 +174,12 @@ def write_report(report: dict, out: Path, today: date) -> int:
 
     body = []
     for key, heading, hint in SECTIONS:
-        items = sorted(open_items[key], key=lambda v: (v["deadline"] is None, v["deadline"] or "", -v["issue_number"]))
+        items = sorted(open_items[key], key=sort_key)
+        if not items and key in COLLAPSED:
+            continue
         body.append(f"<h2>{heading} ({len(items)})</h2><p class='hint'>{hint}</p>")
-        body.append("".join(_card(v, today) for v in items) or "<p class='empty'>Καμία ανοιχτή θέση.</p>")
+        cards = "".join(_card(v, today) for v in items) or "<p class='empty'>Καμία ανοιχτή θέση.</p>"
+        body.append(f"<details><summary>Εμφάνιση</summary>{cards}</details>" if key in COLLAPSED else cards)
 
     if internal:
         internal.sort(key=lambda v: (v["deadline"] is None, v["deadline"] or ""))
@@ -166,7 +195,8 @@ def write_report(report: dict, out: Path, today: date) -> int:
     issues = report["issues"]
     numbers = [i["number"] for i in issues]
     failed = [i for i in issues if i["status"] != "ok"]
-    shown = sum(len(v) for v in open_items.values())
+    shown = sum(len(items) for key, items in open_items.items() if key not in COLLAPSED)
+    less_relevant = sum(len(open_items[key]) for key in COLLAPSED)
     html = f"""<!doctype html>
 <html lang="el"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -177,7 +207,7 @@ def write_report(report: dict, out: Path, today: date) -> int:
 <h1>Θέσεις Πληροφορικής στο Δημόσιο</h1>
 <p class="sub">{shown} ανοιχτές θέσεις · ενημέρωση {today:%d/%m/%Y} ·
 ελέγχθηκαν {len(issues)} τεύχη ({min(numbers, default="-")}–{max(numbers, default="-")}) ·
-{hidden} με προθεσμία που έληξε δεν εμφανίζονται{f" · {len(internal)} μόνο για δημόσιους υπαλλήλους" if internal else ""}</p>
+{hidden} με προθεσμία που έληξε δεν εμφανίζονται{f" · {len(internal)} μόνο για δημόσιους υπαλλήλους" if internal else ""}{f" · {less_relevant} λιγότερο σχετικές" if less_relevant else ""}</p>
 {"".join(body)}
 {"<p class='hint'>Τεύχη με πρόβλημα: " + escape(", ".join(f"{i['number']} ({i['status']})" for i in failed)) + "</p>" if failed else ""}
 <footer>Πηγή: Επίσημη Εφημερίδα της Δημοκρατίας, Κύριο Μέρος, Τμήμα Α. Οι προθεσμίες εντοπίζονται αυτόματα —
