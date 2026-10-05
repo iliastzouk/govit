@@ -34,7 +34,7 @@ def describe(v: dict) -> str:
     title = " ".join(v["title"].split()) or "(χωρίς τίτλο)"
     org = " ".join(v["organization"].split())
     deadline = f"**{date.fromisoformat(v['deadline']):%d/%m/%Y}**" if v["deadline"] else "δες το ΦΕΚ"
-    return (
+    out = (
         f"### {title}\n\n"
         f"- **Φορέας:** {org}\n"
         f"- **Προθεσμία:** {deadline}\n"
@@ -42,6 +42,13 @@ def describe(v: dict) -> str:
         f"- **Πηγή:** ΦΕΚ {v['issue_number']} ({v['issue_date']}), ανακοίνωση {v['notice_number']}, "
         f"σελίδα {v['gazette_page']} — [άνοιγμα PDF]({v['pdf_url']}#page={v['pdf_page']})\n"
     )
+    if ai := v.get("ai"):
+        quals = "".join(f"  - {q}\n" for q in ai.get("qualifications", [])[:8])
+        out += (f"\n{ai.get('summary', '')}\n\n"
+                f"- **Τύπος:** {ai.get('employment_type', '-')}\n"
+                f"- **Καταλληλότητα:** {ai.get('fit_for_profile', '-')} — {ai.get('fit_reason', '')}\n"
+                + (f"- **Προσόντα:**\n{quals}" if quals else ""))
+    return out
 
 
 def send_email(subject: str, markdown: str) -> str:

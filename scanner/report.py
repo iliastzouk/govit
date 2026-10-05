@@ -43,6 +43,12 @@ a{color:var(--accent)}
 details{margin-top:8px;font-size:13px}
 summary{cursor:pointer;color:var(--muted)}
 blockquote{margin:6px 0;padding:6px 10px;border-left:3px solid var(--line);color:var(--muted)}
+.ai{margin-top:10px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--tag-bg)}
+.ai p{margin:4px 0;font-size:14px}
+.ai-head{font-weight:600;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ai ul{margin:6px 0;padding-left:20px;font-size:13px;color:var(--muted)}
+.notice{margin-top:8px;max-height:55vh;overflow:auto;padding:10px;background:var(--tag-bg);border-radius:8px;
+font-size:13px;line-height:1.65;text-align:justify}
 .empty{color:var(--muted);font-style:italic}
 footer{margin-top:40px;color:var(--muted);font-size:12px}
 """
@@ -61,6 +67,27 @@ def _badge(deadline: date | None, today: date) -> str:
     return f'<span class="badge {cls}">Λήγει {when} · {deadline:%d/%m/%Y}</span>'
 
 
+FIT = {"good": ("ok", "Ταιριάζει στο προφίλ"), "partial": ("unknown", "Ταιριάζει εν μέρει"),
+       "poor": ("", "Δεν ταιριάζει στο προφίλ")}
+VERDICT = {"direct_it": "Θέση Πληροφορικής", "it_degree_accepted": "Δεκτό πτυχίο Πληροφορικής",
+           "it_skills_only": "Απλώς γνώσεις υπολογιστών", "not_it": "Άσχετη με Πληροφορική"}
+
+
+def _ai_block(ai: dict) -> str:
+    """What the model made of the notice. Shown next to the original text, never instead of it."""
+    cls, label = FIT.get(ai.get("fit_for_profile", ""), ("", ""))
+    quals = "".join(f"<li>{escape(q)}</li>" for q in ai.get("qualifications", [])[:10])
+    return f"""
+  <div class="ai">
+    <p class="ai-head">{escape(VERDICT.get(ai.get("verdict", ""), ""))}
+      {f'<span class="badge {cls}">{label}</span>' if label else ""}</p>
+    <p>{escape(ai.get("summary", ""))}</p>
+    {f'<p class="org">{escape(ai["employment_type"])}</p>' if ai.get("employment_type") else ""}
+    {f'<details><summary>Απαιτούμενα προσόντα</summary><ul>{quals}</ul></details>' if quals else ""}
+    {f'<p class="org">Καταλληλότητα: {escape(ai["fit_reason"])}</p>' if ai.get("fit_reason") else ""}
+  </div>"""
+
+
 def _card(v: dict, today: date) -> str:
     deadline = date.fromisoformat(v["deadline"]) if v["deadline"] else None
     tags = []
@@ -70,6 +97,10 @@ def _card(v: dict, today: date) -> str:
         tags.append("Μόνο για δημόσιους υπαλλήλους")
     tags += v["matched"][:4]
     snippets = "".join(f"<blockquote>{escape(s)}</blockquote>" for s in v["snippets"][:3])
+    # Phones open PDFs in an external viewer that ignores #page, so the full notice is
+    # inlined here and the PDF is only a fallback.
+    full_text = (f"<details><summary>Πλήρες κείμενο ανακοίνωσης</summary>"
+                 f"<div class='notice'>{escape(v['text'])}</div></details>") if v.get("text") else ""
     return f"""
 <article class="card">
   <div class="top">
@@ -81,9 +112,11 @@ def _card(v: dict, today: date) -> str:
   </div>
   <div class="meta">
     <span>ΦΕΚ {v["issue_number"]} · {v["issue_date"]} · Αρ. {v["notice_number"]} · σελ. {v["gazette_page"]}</span>
-    <a href="{escape(v["pdf_url"])}#page={v["pdf_page"]}" target="_blank" rel="noopener">Άνοιγμα ΦΕΚ στη σελίδα →</a>
+    <a href="{escape(v["pdf_url"])}#page={v["pdf_page"]}" target="_blank" rel="noopener">Άνοιγμα PDF (σελ. {v["pdf_page"]}) →</a>
   </div>
   <div class="meta">{"".join(f'<span class="tag">{escape(t)}</span>' for t in tags)}</div>
+  {_ai_block(v["ai"]) if v.get("ai") else ""}
+  {full_text}
   <details><summary>Γιατί εντοπίστηκε</summary>{snippets}</details>
 </article>"""
 
@@ -152,3 +185,16 @@ def write_report(report: dict, out: Path, today: date) -> int:
 </main></body></html>"""
     out.write_text(html, encoding="utf-8")
     return shown
+
+
+def main() -> None:
+    """Rebuild report.html from results.json — used after the AI step adds its fields."""
+    import json
+
+    results = json.loads((Path(__file__).parent / "results.json").read_text(encoding="utf-8"))
+    out = Path(__file__).parent / "report.html"
+    print(f"{write_report(results, out, date.today())} open IT candidates -> {out}")
+
+
+if __name__ == "__main__":
+    main()

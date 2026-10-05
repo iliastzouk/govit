@@ -38,6 +38,16 @@ jobs:
         run: python poc.py --limit 20
         working-directory: scanner
 
+      - name: Extract details with OpenAI
+        working-directory: scanner
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          CANDIDATE_PROFILE: ${{ vars.CANDIDATE_PROFILE }}
+        run: |
+          python ai.py
+          python report.py   # rebuild the page with the AI fields
+
       - name: Decide what is new
         id: notify
         working-directory: scanner
@@ -56,7 +66,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add scanner/report.html scanner/results.json scanner/notified.json docs/index.html
+          git add scanner/report.html scanner/results.json scanner/notified.json scanner/ai_cache.json docs/index.html
           git diff --staged --quiet && echo "nothing changed" && exit 0
           git commit -m "Update gazette report ($(date -u +%Y-%m-%d))"
           git push

@@ -330,8 +330,12 @@ def main() -> None:
             entry.update(notices=len(notices), vacancy_notices=len(vac), it_candidates=len(cands), text_chars=chars)
             for n in vac:
                 d = asdict(n)
-                if not args.keep_text:
+                # The text of a candidate is always kept: the report shows it, so the
+                # reader does not have to open a 3 MB PDF on a phone.
+                if not args.keep_text and n.category == "not_it":
                     d.pop("text")
+                else:
+                    d["text"] = " ".join(re.sub(r"-\s*\n\s*", "", d["text"]).split())
                 d["pdf_url"] = issue.pdf_url
                 report["vacancies"].append(d)
             print(f"  #{issue.number} {issue.date}: {len(notices):3} notices, {len(vac):2} vacancy, {len(cands)} IT candidates")
