@@ -1,5 +1,8 @@
 # Cyprus Gazette IT jobs — proof of concept
 
+Live report: **https://iliastzouk.github.io/govit/** (served from `docs/index.html`,
+refreshed by the scheduled workflow).
+
 Scans the latest issues of the Official Gazette (Main Part, Section A), splits each PDF
 into numbered notices and flags vacancy notices that relate to IT.
 
