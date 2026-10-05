@@ -16,11 +16,12 @@ import requests
 
 HERE = Path(__file__).parent
 CACHE = HERE / "ai_cache.json"
-MODEL = os.environ.get("OPENAI_MODEL", "gpt-5-mini")
+# `or` rather than a get() default: the workflow passes these through as empty strings
+# when the repository variables are not set.
+MODEL = os.environ.get("OPENAI_MODEL") or "gpt-5-mini"
 # The profile the model judges the post against.
-PROFILE = os.environ.get(
-    "CANDIDATE_PROFILE",
-    "Προγραμματιστής με πτυχίο Πληροφορικής και εμπειρία σε C#/.NET, React, SQL Server.",
+PROFILE = os.environ.get("CANDIDATE_PROFILE") or (
+    "Προγραμματιστής με πτυχίο Πληροφορικής και εμπειρία σε C#/.NET, React, SQL Server."
 )
 
 SCHEMA = {
@@ -106,6 +107,9 @@ def main() -> None:
             except Exception as e:
                 failed += 1
                 print(f"  failed {key}: {e}", file=sys.stderr)
+                if failed >= 3 and done == 0:
+                    print("  giving up: the first calls all failed", file=sys.stderr)
+                    break
                 continue
         v["ai"] = cache[key]
 
